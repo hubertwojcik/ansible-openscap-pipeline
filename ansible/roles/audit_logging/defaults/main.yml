@@ -4,3 +4,7 @@
 auditd_max_log_file_action: keep_logs
 
 auditd_action_mail_acct: root
+
+# systemd-journald (rules journald_compress, journald_storage)
+journald_compress: "yes"
+journald_storage: persistent

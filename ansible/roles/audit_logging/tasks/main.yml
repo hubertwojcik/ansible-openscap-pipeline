@@ -31,3 +31,14 @@
     group: root
     mode: "0640"
   notify: Reload audit rules
+
+- name: Configure systemd-journald
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: '^#?\s*{{ item.key }}\s*='
+    line: "{{ item.key }}={{ item.value }}"
+    state: present
+  loop:
+    - { key: Compress, value: "{{ journald_compress }}" }
+    - { key: Storage, value: "{{ journald_storage }}" }
+  notify: Restart journald
