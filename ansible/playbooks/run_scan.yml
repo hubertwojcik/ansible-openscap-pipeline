@@ -29,7 +29,7 @@
 
     - name: Run OpenSCAP evaluation
       ansible.builtin.command:
-        cmd: "{{ remote_out_dir }}/run_scan.sh {{ remote_out_dir }}"
+        cmd: "bash {{ remote_out_dir }}/run_scan.sh {{ remote_out_dir }}"
       environment:
         SCAN_ENV: "{{ remote_out_dir }}/scan.env"
       register: scan_result

@@ -1,8 +1,6 @@
 name: OpenSCAP Pipeline
 
-# Manually triggered from the Actions tab (workflow_dispatch).
-# v1 scope: provision EC2 -> install OpenSCAP -> baseline scan -> destroy.
-# Later branches add: remediate (site.yml), post-remediation scan, comparison report.
+
 on:
   workflow_dispatch:
 
@@ -14,7 +12,7 @@ jobs:
   # duration of this run. Provision and destroy must therefore share one runner,
   # otherwise the "destroy" step would have no state and leak EC2 instances.
   provision-scan-teardown:
-    name: Provision → Scan → Teardown
+    name: Provision → Scan → Remediate → Re-scan → Teardown
     runs-on: ubuntu-latest
 
     env:
@@ -84,8 +82,20 @@ jobs:
           name: pre-remediation-report
           path: reports/pre-remediation/
 
-      # if: always() guarantees teardown even if a scan step failed,
-      # so we never leave EC2 instances running and billing.
+      - name: Apply remediation roles (site.yml)
+        working-directory: ansible
+        run: ansible-playbook playbooks/site.yml
+
+      - name: Run post-remediation scan
+        working-directory: ansible
+        run: ansible-playbook playbooks/run_scan.yml -e scan_phase=post
+
+      - name: Upload post-remediation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-remediation-report
+          path: reports/post-remediation/
+          
       - name: Terraform destroy
         if: always()
         working-directory: terraform
