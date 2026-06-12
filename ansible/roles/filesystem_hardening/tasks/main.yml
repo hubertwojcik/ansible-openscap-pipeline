@@ -16,7 +16,6 @@
     src: tmpfs
     fstype: tmpfs
     opts: "{{ fs_dev_shm_opts }}"
-    # state: mounted = write to /etc/fstab AND remount now
     state: mounted
 
 - name: Configure /tmp as a hardened tmpfs (opt-in)
