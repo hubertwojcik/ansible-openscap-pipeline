@@ -1,0 +1,33 @@
+---
+- name: Install auditd
+  ansible.builtin.apt:
+    name:
+      - auditd
+      - audispd-plugins
+    state: present
+
+- name: Enable and start auditd service
+  ansible.builtin.service:
+    name: auditd
+    state: started
+    enabled: true
+
+- name: Configure auditd data retention
+  ansible.builtin.lineinfile:
+    path: /etc/audit/auditd.conf
+    regexp: '^{{ item.key }}\s*='
+    line: "{{ item.key }} = {{ item.value }}"
+    state: present
+  loop:
+    - { key: max_log_file_action, value: "{{ auditd_max_log_file_action }}" }
+    - { key: action_mail_acct, value: "{{ auditd_action_mail_acct }}" }
+  notify: Restart auditd
+
+- name: Deploy hardening audit rules
+  ansible.builtin.copy:
+    src: hardening.rules
+    dest: /etc/audit/rules.d/hardening.rules
+    owner: root
+    group: root
+    mode: "0640"
+  notify: Reload audit rules

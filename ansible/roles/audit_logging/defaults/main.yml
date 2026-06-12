@@ -1,0 +1,6 @@
+---
+# Audit logging defaults — CIS Ubuntu 22.04 LTS Level 1
+
+auditd_max_log_file_action: keep_logs
+
+auditd_action_mail_acct: root
