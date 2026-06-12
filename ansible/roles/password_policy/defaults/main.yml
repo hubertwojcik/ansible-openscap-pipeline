@@ -1,14 +1,13 @@
 ---
-# Password policy defaults — CIS Ubuntu 22.04 LTS Level 1
 
 # /etc/login.defs 
-pass_max_days: 365 # accounts_maximum_age_login_defs
-pass_min_days: 1 # accounts_minimum_age_login_defs
-pass_warn_age: 7 # accounts_password_warn_age_login_defs
+pass_max_days: 365 
+pass_min_days: 1 
+pass_warn_age: 7 
 
 # /etc/security/pwquality.conf 
-pwquality_minlen: 14 # accounts_password_pam_minlen
-pwquality_dcredit: -1 # accounts_password_pam_dcredit (min. 1 number)
-pwquality_ucredit: -1 # accounts_password_pam_ucredit (min. 1 capital letter)
-pwquality_ocredit: -1 # accounts_password_pam_ocredit (min. 1 special char)
-pwquality_lcredit: -1 # accounts_password_pam_lcredit (min. 1 lower letter)
+pwquality_minlen: 14 
+pwquality_dcredit: -1 
+pwquality_ucredit: -1 
+pwquality_ocredit: -1 
+pwquality_lcredit: -1 

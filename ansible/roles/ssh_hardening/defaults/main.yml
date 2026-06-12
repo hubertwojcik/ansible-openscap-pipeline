@@ -1,8 +1,4 @@
 ---
-# SSH hardening defaults — CIS Ubuntu 22.04 LTS Level 1
-# Each variable maps to one OpenSCAP rule (comment = rule ID without the
-# xccdf_org.ssgproject.content_rule_ prefix).
-
 ssh_permit_root_login: "no" # sshd_disable_root_login
 ssh_permit_empty_passwords: "no" # sshd_disable_empty_passwords
 ssh_password_authentication: "no" # sshd_disable_password_auth (we use key auth)
