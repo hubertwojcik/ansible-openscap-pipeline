@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+# SSH hardening — CIS Ubuntu 22.04 LTS Level 1
+# A 00- prefixed drop-in is read first; sshd is first-match-wins,
+# so these values override the default 50-cloud-init.conf.
+
+PermitRootLogin {{ ssh_permit_root_login }}
+PermitEmptyPasswords {{ ssh_permit_empty_passwords }}
+PasswordAuthentication {{ ssh_password_authentication }}
+MaxAuthTries {{ ssh_max_auth_tries }}
+ClientAliveInterval {{ ssh_client_alive_interval }}
+ClientAliveCountMax {{ ssh_client_alive_count_max }}
+LoginGraceTime {{ ssh_login_grace_time }}
+MaxSessions {{ ssh_max_sessions }}
+X11Forwarding {{ ssh_x11_forwarding }}
+LogLevel {{ ssh_log_level }}
+IgnoreRhosts {{ ssh_ignore_rhosts }}
+HostbasedAuthentication {{ ssh_hostbased_authentication }}
+PermitUserEnvironment {{ ssh_permit_user_environment }}
+Banner {{ ssh_banner }}

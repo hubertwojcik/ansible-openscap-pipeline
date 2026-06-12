@@ -1,0 +1,25 @@
+---
+- name: Set password aging controls in /etc/login.defs
+  ansible.builtin.lineinfile:
+    path: /etc/login.defs
+    regexp: '^{{ item.key }}\s'
+    line: "{{ item.key }}\t{{ item.value }}"
+    state: present
+  loop:
+    - { key: PASS_MAX_DAYS, value: "{{ pass_max_days }}" }
+    - { key: PASS_MIN_DAYS, value: "{{ pass_min_days }}" }
+    - { key: PASS_WARN_AGE, value: "{{ pass_warn_age }}" }
+
+- name: Set password quality requirements in /etc/security/pwquality.conf
+  ansible.builtin.lineinfile:
+    path: /etc/security/pwquality.conf
+    # ^#?\s* also matches the default commented-out lines like "# minlen = 8"
+    regexp: '^#?\s*{{ item.key }}\s*='
+    line: "{{ item.key }} = {{ item.value }}"
+    state: present
+  loop:
+    - { key: minlen, value: "{{ pwquality_minlen }}" }
+    - { key: dcredit, value: "{{ pwquality_dcredit }}" }
+    - { key: ucredit, value: "{{ pwquality_ucredit }}" }
+    - { key: ocredit, value: "{{ pwquality_ocredit }}" }
+    - { key: lcredit, value: "{{ pwquality_lcredit }}" }

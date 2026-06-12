@@ -1,0 +1,15 @@
+---
+
+fs_disabled_modules:
+  - cramfs
+  - freevxfs
+  - jffs2
+  - hfs
+  - hfsplus
+  - squashfs
+  - udf
+
+fs_dev_shm_opts: "defaults,nodev,nosuid,noexec"
+
+fs_configure_tmp_mount: false
+fs_tmp_opts: "defaults,nodev,nosuid,noexec"

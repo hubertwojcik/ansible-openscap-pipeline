@@ -1,0 +1,13 @@
+---
+
+# /etc/login.defs 
+pass_max_days: 365 
+pass_min_days: 1 
+pass_warn_age: 7 
+
+# /etc/security/pwquality.conf 
+pwquality_minlen: 14 
+pwquality_dcredit: -1 
+pwquality_ucredit: -1 
+pwquality_ocredit: -1 
+pwquality_lcredit: -1 
