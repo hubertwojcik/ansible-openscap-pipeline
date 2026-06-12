@@ -1,0 +1,10 @@
+---
+- name: Apply hardening roles to all target nodes
+  hosts: targets
+  become: true
+
+  roles:
+    - ssh_hardening
+    - password_policy
+    - filesystem_hardening
+    - audit_logging
