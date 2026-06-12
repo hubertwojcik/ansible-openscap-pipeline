@@ -76,7 +76,7 @@ jobs:
 
       - name: Run baseline (pre-remediation) scan
         working-directory: ansible
-        run: ansible-playbook playbooks/scan.yml -e scan_phase=pre
+        run: ansible-playbook playbooks/run_scan.yml -e scan_phase=pre
 
       - name: Upload pre-remediation report
         uses: actions/upload-artifact@v4
