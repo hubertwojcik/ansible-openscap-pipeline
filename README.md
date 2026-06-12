@@ -1,32 +1,66 @@
 # ansible-openscap-pipeline
 
-An automated security configuration management pipeline that integrates OpenSCAP compliance scanning with Ansible-driven remediation on Ubuntu 22.04. The pipeline provisions infrastructure on AWS, runs an OpenSCAP baseline scan, applies targeted Ansible remediation roles, re-scans, and produces a before/after comparison report to quantify the hardening impact.
+An automated security compliance pipeline that provisions two Ubuntu 22.04 EC2 instances on AWS, runs an OpenSCAP baseline scan across both, applies Ansible-driven remediation in parallel, re-scans, and produces a before/after comparison report to quantify the hardening impact.
+
+The pipeline runs entirely in **GitHub Actions** — the runner acts as the Ansible control node, connecting to the EC2 target nodes over SSH.
 
 ---
 
 ## Pipeline Overview
 
 ```
+GitHub Actions runner (control node)
+│
+│  1. terraform apply
+│     → EC2 target-1 (Ubuntu 22.04, eu-north-1)
+│     → EC2 target-2 (Ubuntu 22.04, eu-north-1)
+│
+│  2. OpenSCAP scan BEFORE  (both targets in parallel)
+│     → reports/pre-remediation/target-{1,2}.html
+│
+│  3. ansible-playbook remediate.yml  (both targets in parallel)
+│     → ssh_hardening · password_policy · filesystem_hardening · audit_logging
+│
+│  4. OpenSCAP scan AFTER  (both targets in parallel)
+│     → reports/post-remediation/target-{1,2}.html
+│
+│  5. compare_reports.py
+│     → reports/comparison/delta.md  (score + pass/fail diff per host)
+│     → uploaded as GitHub Actions artifact
+│
+└  6. terraform destroy
+```
+
+---
+
+## Architecture
+
+```
 ┌─────────────────────────────────────────────────────────────┐
-│  0. PROVISION                                               │
-│  terraform apply → EC2 control node + EC2 target node       │
-├─────────────────────────────────────────────────────────────┤
-│  1. SCAN                                                    │
-│  oscap xccdf eval → ARF + HTML output (pre-remediation)     │
-├─────────────────────────────────────────────────────────────┤
-│  2. PARSE                                                   │
-│  scripts/parse_results.py → failing rule IDs → role map     │
-├─────────────────────────────────────────────────────────────┤
-│  3. REMEDIATE                                               │
-│  Ansible roles: ssh_hardening · password_policy ·           │
-│                 filesystem_hardening · audit_logging         │
-├─────────────────────────────────────────────────────────────┤
-│  4. RE-SCAN                                                 │
-│  oscap xccdf eval → ARF + HTML output (post-remediation)    │
-├─────────────────────────────────────────────────────────────┤
-│  5. REPORT                                                  │
-│  scripts/compare_reports.py → score delta + pass/fail diff  │
-└─────────────────────────────────────────────────────────────┘
+│  GitHub Actions runner                                       │
+│  (ubuntu-latest — Ansible control node)                     │
+│                                                             │
+│  terraform apply / destroy                                  │
+│  ansible-playbook site.yml                                  │
+│  python3 scripts/compare_reports.py                         │
+└──────────────────┬──────────────────────────────────────────┘
+                   │ SSH (port 22)
+                   │
+        ┌──────────▼──────────────────────┐
+        │         AWS eu-north-1          │
+        │                                 │
+        │  VPC  ──  Public Subnet         │
+        │  │                              │
+        │  ├── EC2 target-1 (t3.micro)   │
+        │  │   Ubuntu 22.04               │
+        │  │   OpenSCAP + SSG             │
+        │  │                              │
+        │  └── EC2 target-2 (t3.micro)   │
+        │      Ubuntu 22.04               │
+        │      OpenSCAP + SSG             │
+        │                                 │
+        │  Security Group: SSH 0.0.0.0/0  │
+        └─────────────────────────────────┘
 ```
 
 ---
@@ -39,29 +73,9 @@ An automated security configuration management pipeline that integrates OpenSCAP
 | Configuration Management | Ansible, Ansible Roles |
 | Compliance Scanning | OpenSCAP (`oscap`), SCAP Security Guide (SSG) |
 | Compliance Profile | CIS Ubuntu 22.04 Level 1 |
-| Target OS | Ubuntu 22.04 LTS |
-| CI/CD | GitHub Actions |
+| Target OS | Ubuntu 22.04 LTS (×2 EC2 instances) |
+| CI/CD | GitHub Actions (also acts as Ansible control node) |
 | Reporting | XCCDF/ARF/HTML, Markdown diff report |
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    AWS (eu-north-1)                  │
-│                                                      │
-│  ┌─────────────────────┐   SSH   ┌────────────────┐ │
-│  │   control node      │ ──────► │  target node   │ │
-│  │   (EC2 t3.micro)    │         │  (EC2 t3.micro)│ │
-│  │                     │         │                │ │
-│  │  Ansible            │         │  OpenSCAP      │ │
-│  │  pipeline.sh        │         │  Ubuntu 22.04  │ │
-│  └─────────────────────┘         └────────────────┘ │
-│                                                      │
-│  Security Group: SSH between nodes only               │
-└─────────────────────────────────────────────────────┘
-```
 
 ---
 
@@ -70,46 +84,44 @@ An automated security configuration management pipeline that integrates OpenSCAP
 ```
 .
 ├── terraform/
-│   ├── main.tf              # EC2 control node + target node
+│   ├── main.tf                  # Wires all modules together
 │   ├── variables.tf
-│   ├── outputs.tf           # Public IPs, inventory output
-│   └── security_group.tf    # SSH between nodes only
+│   ├── outputs.tf               # EC2 public IPs, generated inventory
+│   ├── backend.tf               # S3 state backend
+│   ├── provider.tf
+│   └── modules/
+│       ├── encryption/          # KMS key for S3/DynamoDB
+│       ├── backend/             # S3 bucket + DynamoDB state lock
+│       ├── vpc/                 # VPC, subnet, IGW, route table
+│       ├── security-groups/     # SG: SSH from anywhere (GHA dynamic IPs)
+│       └── compute/             # 2x EC2 target nodes + key pair
 ├── ansible/
 │   ├── ansible.cfg
 │   ├── inventory/
-│   │   └── hosts.ini        # Generated by Terraform output
+│   │   └── hosts.ini            # Generated from terraform output
 │   ├── playbooks/
-│   │   └── site.yml         # Top-level orchestration playbook
+│   │   └── site.yml             # Top-level orchestration playbook
 │   └── roles/
 │       ├── ssh_hardening/
 │       ├── password_policy/
 │       ├── filesystem_hardening/
 │       └── audit_logging/
 ├── config/
-│   ├── scan.env             # PROFILE_ID and DATASTREAM_PATH
-│   └── rule_role_map.yml    # OpenSCAP rule ID → Ansible role mapping
+│   ├── scan.env                 # PROFILE_ID and DATASTREAM_PATH
+│   └── rule_role_map.yml        # OpenSCAP rule ID → Ansible role mapping
 ├── scripts/
-│   ├── run_scan.sh          # Execute oscap scan and save output
-│   ├── parse_results.py     # Parse ARF XML → structured findings
-│   └── compare_reports.py   # Diff two ARF files → Markdown report
+│   ├── run_scan.sh              # Execute oscap scan on target and fetch output
+│   ├── parse_results.py         # Parse ARF XML → structured findings
+│   └── compare_reports.py       # Diff two ARF files → Markdown report
 ├── reports/
 │   ├── pre-remediation/
 │   ├── post-remediation/
 │   └── comparison/
-├── tests/
-│   └── fixtures/            # Sample ARF files for parser unit tests
-├── pipeline.sh              # Single-command pipeline entrypoint
 ├── .github/
 │   └── workflows/
-│       └── ansible-validate.yml  # Lint + syntax check on push/PR
+│       ├── pipeline.yml         # Full pipeline: provision → scan → remediate → report
+│       └── ansible-validate.yml # Lint + syntax check on PR
 └── docs/
-    ├── architecture.md
-    ├── compliance-profile.md
-    ├── scanning.md
-    ├── baseline-findings.md
-    ├── usage.md
-    ├── remediation-runbooks.md
-    └── sample-report.md
 ```
 
 ---
@@ -123,76 +135,58 @@ An automated security configuration management pipeline that integrates OpenSCAP
 | `filesystem_hardening` | `nodev`/`nosuid`/`noexec` on `/tmp` and `/dev/shm`, unused filesystem modules disabled |
 | `audit_logging` | `auditd` enabled, rules for privileged commands, file deletion, user/group changes |
 
-Each role maps its tasks to specific OpenSCAP rule IDs. See `config/rule_role_map.yml` for the full mapping.
-
 ---
 
 ## Prerequisites
 
-- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
-- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) >= 2.x, configured with credentials (`aws configure`)
-- [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/) >= 2.14
+- AWS credentials configured as GitHub Secrets:
+  - `AWS_ACCESS_KEY_ID`
+  - `AWS_SECRET_ACCESS_KEY`
+- EC2 SSH private key stored as GitHub Secret: `EC2_SSH_PRIVATE_KEY`
+- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5 (local, for manual runs)
+- [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/) >= 2.14 (local, for manual runs)
 - [ansible-lint](https://ansible.readthedocs.io/projects/lint/) — `pip install ansible-lint`
-- [Python](https://www.python.org/) >= 3.9 (for parser scripts)
+- [Python](https://www.python.org/) >= 3.9
 
 ---
 
-## Quick Start
+## Quick Start (manual)
 
 ```bash
-# 1. Provision infrastructure
+# 1. Provision EC2 targets
 cd terraform/
 terraform init
 terraform apply
 cd ..
 
-# 2. Update inventory with Terraform outputs
+# 2. Generate Ansible inventory from Terraform output
 terraform -chdir=terraform/ output -raw inventory > ansible/inventory/hosts.ini
 
-# 3. Verify Ansible connectivity
+# 3. Verify connectivity to both targets
 ansible targets -m ping
 
 # 4. Run the full pipeline
 ./pipeline.sh
 
-# 5. Tear down infrastructure when done
+# 5. Tear down
 terraform -chdir=terraform/ destroy
-```
-
-The pipeline will:
-1. Run a baseline OpenSCAP scan and save results to `reports/pre-remediation/`
-2. Parse failing rules and determine which roles to apply
-3. Execute the relevant Ansible roles
-4. Re-scan and save results to `reports/post-remediation/`
-5. Generate a comparison report in `reports/comparison/`
-
----
-
-## Running Steps Individually
-
-```bash
-# Baseline scan only
-source config/scan.env
-bash scripts/run_scan.sh
-
-# Parse ARF results
-python3 scripts/parse_results.py reports/pre-remediation/latest.arf
-
-# Compare two reports
-python3 scripts/compare_reports.py \
-  reports/pre-remediation/latest.arf \
-  reports/post-remediation/latest.arf
-
-# Apply a single role
-ansible-playbook ansible/playbooks/site.yml --tags ssh_hardening
 ```
 
 ---
 
 ## CI/CD
 
-The GitHub Actions workflow (`.github/workflows/ansible-validate.yml`) runs on every push and pull request:
+Two GitHub Actions workflows:
 
+**`pipeline.yml`** — triggered manually (`workflow_dispatch`) or on push to `main`:
+1. `terraform apply` — provisions 2x EC2 targets
+2. OpenSCAP pre-scan on both targets
+3. Ansible remediation on both targets
+4. OpenSCAP post-scan on both targets
+5. Generate comparison report → upload as artifact
+6. `terraform destroy` — cleans up EC2
+
+**`ansible-validate.yml`** — triggered on every PR:
 - `ansible-lint` — all playbooks and roles
 - `ansible-playbook --syntax-check` — `site.yml`
 - `yamllint` — all YAML files
@@ -205,11 +199,11 @@ The GitHub Actions workflow (`.github/workflows/ansible-validate.yml`) runs on e
 
 | # | Milestone | Description |
 |---|---|---|
-| 1 | Infrastructure | Terraform EC2 provisioning, SSH connectivity, Ansible inventory |
-| 2 | Scanning Layer | OpenSCAP + SSG setup, profile selection, baseline scan |
-| 3 | Remediation Layer | Ansible roles for SSH, passwords, filesystem, audit |
-| 4 | Pipeline Integration | XCCDF parser, full scan → remediate → re-scan chain |
-| 5 | Reporting & CI/CD | Before/after report, GitHub Actions validation |
+| 1 | Infrastructure | Terraform EC2 provisioning, VPC, Security Groups, key pair |
+| 2 | Scanning Layer | OpenSCAP + SSG setup, CIS profile selection, baseline scan on both targets |
+| 3 | Remediation Layer | Ansible roles: SSH, passwords, filesystem, audit |
+| 4 | Pipeline Integration | XCCDF parser, full scan → remediate → re-scan chain in GitHub Actions |
+| 5 | Reporting & CI/CD | Before/after comparison report, artifact upload, ansible-validate workflow |
 
 ---
 
