@@ -1,0 +1,36 @@
+---
+- name: Install OpenSCAP and SCAP Security Guide on target nodes
+  hosts: targets
+  become: true
+
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install openscap-scanner and SCAP Security Guide
+      ansible.builtin.apt:
+        name:
+          - openscap-scanner
+          - ssg-base
+        state: present
+
+    - name: Verify oscap binary is available
+      ansible.builtin.command: oscap --version
+      register: oscap_version
+      changed_when: false
+
+    - name: Print oscap version
+      ansible.builtin.debug:
+        msg: "{{ oscap_version.stdout_lines[0] }}"
+
+    - name: Confirm Ubuntu 22.04 datastream file exists
+      ansible.builtin.stat:
+        path: /usr/share/xml/scap/ssg/content/ssg-ubuntu2204-ds.xml
+      register: datastream_file
+
+    - name: Fail if datastream file is missing
+      ansible.builtin.fail:
+        msg: "SCAP datastream not found at expected path — check ssg-base installation"
+      when: not datastream_file.stat.exists
