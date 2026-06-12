@@ -3,17 +3,21 @@
   hosts: targets
   become: true
 
+  vars:
+    ssg_version: "0.1.73"
+    ssg_content_dir: /usr/share/xml/scap/ssg/content
+
   tasks:
     - name: Update apt cache
       ansible.builtin.apt:
         update_cache: true
         cache_valid_time: 3600
-
-    - name: Install openscap-scanner and SCAP Security Guide
+        
+    - name: Install OpenSCAP scanner and unzip
       ansible.builtin.apt:
         name:
-          - openscap-scanner
-          - ssg-base
+          - libopenscap8
+          - unzip
         state: present
 
     - name: Verify oscap binary is available
@@ -25,12 +29,38 @@
       ansible.builtin.debug:
         msg: "{{ oscap_version.stdout_lines[0] }}"
 
-    - name: Confirm Ubuntu 22.04 datastream file exists
+    - name: Ensure SSG content directory exists
+      ansible.builtin.file:
+        path: "{{ ssg_content_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Download SCAP Security Guide release
+      ansible.builtin.get_url:
+        url: "https://github.com/ComplianceAsCode/content/releases/download/v{{ ssg_version }}/scap-security-guide-{{ ssg_version }}.zip"
+        dest: "/tmp/ssg-{{ ssg_version }}.zip"
+        mode: "0644"
+
+    - name: Unpack SCAP Security Guide
+      ansible.builtin.unarchive:
+        src: "/tmp/ssg-{{ ssg_version }}.zip"
+        dest: /tmp/
+        remote_src: true
+        creates: "/tmp/scap-security-guide-{{ ssg_version }}"
+
+    - name: Install Ubuntu 22.04 datastream
+      ansible.builtin.copy:
+        src: "/tmp/scap-security-guide-{{ ssg_version }}/ssg-ubuntu2204-ds.xml"
+        dest: "{{ ssg_content_dir }}/ssg-ubuntu2204-ds.xml"
+        remote_src: true
+        mode: "0644"
+
+    - name: Confirm Ubuntu 22.04 datastream is in place
       ansible.builtin.stat:
-        path: /usr/share/xml/scap/ssg/content/ssg-ubuntu2204-ds.xml
+        path: "{{ ssg_content_dir }}/ssg-ubuntu2204-ds.xml"
       register: datastream_file
 
     - name: Fail if datastream file is missing
       ansible.builtin.fail:
-        msg: "SCAP datastream not found at expected path — check ssg-base installation"
+        msg: "SCAP datastream not found at expected path — check SSG download/unpack"
       when: not datastream_file.stat.exists

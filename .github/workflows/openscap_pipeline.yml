@@ -13,7 +13,8 @@ jobs:
   # Single job on purpose: Terraform uses LOCAL state, which only lives for the
   # duration of this run. Provision and destroy must therefore share one runner,
   # otherwise the "destroy" step would have no state and leak EC2 instances.
-  scan:
+  provision-scan-teardown:
+    name: Provision → Scan → Teardown
     runs-on: ubuntu-latest
 
     env:
