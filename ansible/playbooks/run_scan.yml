@@ -1,0 +1,52 @@
+---
+- name: Run OpenSCAP scan on target nodes and fetch results
+  hosts: targets
+  become: true
+
+  vars:
+    scan_phase: pre
+    remote_out_dir: /tmp/openscap
+    repo_root: "{{ playbook_dir }}/../.."
+
+  tasks:
+    - name: Ensure remote output directory exists
+      ansible.builtin.file:
+        path: "{{ remote_out_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Copy scan.env to target
+      ansible.builtin.copy:
+        src: "{{ repo_root }}/config/scan.env"
+        dest: "{{ remote_out_dir }}/scan.env"
+        mode: "0644"
+
+    - name: Copy run_scan.sh to target
+      ansible.builtin.copy:
+        src: "{{ repo_root }}/scripts/run_scan.sh"
+        dest: "{{ remote_out_dir }}/run_scan.sh"
+        mode: "0755"
+
+    - name: Run OpenSCAP evaluation
+      ansible.builtin.command:
+        cmd: "{{ remote_out_dir }}/run_scan.sh {{ remote_out_dir }}"
+      environment:
+        SCAN_ENV: "{{ remote_out_dir }}/scan.env"
+      register: scan_result
+      changed_when: false
+
+    - name: Show scan output
+      ansible.builtin.debug:
+        var: scan_result.stdout_lines
+
+    - name: Fetch ARF result to control node
+      ansible.builtin.fetch:
+        src: "{{ remote_out_dir }}/results.arf.xml"
+        dest: "{{ repo_root }}/reports/{{ scan_phase }}-remediation/{{ inventory_hostname }}.arf.xml"
+        flat: true
+
+    - name: Fetch HTML report to control node
+      ansible.builtin.fetch:
+        src: "{{ remote_out_dir }}/report.html"
+        dest: "{{ repo_root }}/reports/{{ scan_phase }}-remediation/{{ inventory_hostname }}.html"
+        flat: true

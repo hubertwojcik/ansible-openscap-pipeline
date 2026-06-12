@@ -1,0 +1,91 @@
+name: OpenSCAP Pipeline
+
+# Manually triggered from the Actions tab (workflow_dispatch).
+# v1 scope: provision EC2 -> install OpenSCAP -> baseline scan -> destroy.
+# Later branches add: remediate (site.yml), post-remediation scan, comparison report.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Single job on purpose: Terraform uses LOCAL state, which only lives for the
+  # duration of this run. Provision and destroy must therefore share one runner,
+  # otherwise the "destroy" step would have no state and leak EC2 instances.
+  scan:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install Ansible
+        run: pip install ansible
+
+      - name: Write SSH private key from secret
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/ansible-openscap
+          chmod 600 ~/.ssh/ansible-openscap
+
+      - name: Terraform init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform apply
+        working-directory: terraform
+        run: terraform apply -auto-approve
+
+      - name: Generate Ansible inventory from Terraform output
+        working-directory: terraform
+        run: terraform output -raw ansible_inventory > ../ansible/inventory/hosts.ini
+
+      - name: Wait for targets to accept SSH
+        working-directory: ansible
+        run: |
+          for i in $(seq 1 10); do
+            if ansible targets -m ping; then
+              echo "Targets reachable."
+              exit 0
+            fi
+            echo "Attempt $i: SSH not ready yet, waiting 15s..."
+            sleep 15
+          done
+          echo "Targets never became reachable" >&2
+          exit 1
+
+      - name: Install OpenSCAP on targets
+        working-directory: ansible
+        run: ansible-playbook playbooks/setup_targets.yml
+
+      - name: Run baseline (pre-remediation) scan
+        working-directory: ansible
+        run: ansible-playbook playbooks/scan.yml -e scan_phase=pre
+
+      - name: Upload pre-remediation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pre-remediation-report
+          path: reports/pre-remediation/
+
+      # if: always() guarantees teardown even if a scan step failed,
+      # so we never leave EC2 instances running and billing.
+      - name: Terraform destroy
+        if: always()
+        working-directory: terraform
+        run: terraform destroy -auto-approve
