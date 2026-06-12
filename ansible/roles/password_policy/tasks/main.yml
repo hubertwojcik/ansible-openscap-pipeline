@@ -1,4 +1,11 @@
 ---
+- name: Install pam_pwquality (provides pwquality.conf and the PAM module)
+  ansible.builtin.apt:
+    name: libpam-pwquality
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
 - name: Set password aging controls in /etc/login.defs
   ansible.builtin.lineinfile:
     path: /etc/login.defs
@@ -17,6 +24,8 @@
     regexp: '^#?\s*{{ item.key }}\s*='
     line: "{{ item.key }} = {{ item.value }}"
     state: present
+    create: true # safety net; the package above already provides the file
+    mode: "0644"
   loop:
     - { key: minlen, value: "{{ pwquality_minlen }}" }
     - { key: dcredit, value: "{{ pwquality_dcredit }}" }
