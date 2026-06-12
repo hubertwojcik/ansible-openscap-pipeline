@@ -6,5 +6,5 @@
   roles:
     - ssh_hardening
     - password_policy
-    - filesystem_hardening
     - audit_logging
+    - filesystem_hardening
