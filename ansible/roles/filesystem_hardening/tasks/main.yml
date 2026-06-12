@@ -1,0 +1,29 @@
+---
+- name: Disable unused filesystem kernel modules
+  ansible.builtin.copy:
+    dest: "/etc/modprobe.d/{{ item }}.conf"
+    content: |
+      install {{ item }} /bin/true
+      blacklist {{ item }}
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ fs_disabled_modules }}"
+
+- name: Harden /dev/shm mount options
+  ansible.posix.mount:
+    path: /dev/shm
+    src: tmpfs
+    fstype: tmpfs
+    opts: "{{ fs_dev_shm_opts }}"
+    # state: mounted = write to /etc/fstab AND remount now
+    state: mounted
+
+- name: Configure /tmp as a hardened tmpfs (opt-in)
+  ansible.posix.mount:
+    path: /tmp
+    src: tmpfs
+    fstype: tmpfs
+    opts: "{{ fs_tmp_opts }}"
+    state: mounted
+  when: fs_configure_tmp_mount | bool

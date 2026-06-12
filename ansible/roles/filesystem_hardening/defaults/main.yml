@@ -1,0 +1,21 @@
+---
+# Filesystem hardening defaults — CIS Ubuntu 22.04 LTS Level 1
+
+# Unused filesystems to disable (rules kernel_module_*_disabled).
+fs_disabled_modules:
+  - cramfs
+  - freevxfs
+  - jffs2
+  - hfs
+  - hfsplus
+  - squashfs
+  - udf
+
+# Mount options for /dev/shm (rules mount_option_dev_shm_*).
+fs_dev_shm_opts: "defaults,nodev,nosuid,noexec"
+
+# /tmp as a hardened tmpfs (rules mount_option_tmp_*).
+# DISABLED BY DEFAULT: noexec on /tmp would block running run_scan.sh, which is
+# copied into /tmp. Enabling it requires moving the scan working dir (pipeline branch).
+fs_configure_tmp_mount: false
+fs_tmp_opts: "defaults,nodev,nosuid,noexec"
