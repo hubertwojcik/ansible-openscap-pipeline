@@ -95,7 +95,16 @@ jobs:
         with:
           name: post-remediation-report
           path: reports/post-remediation/
-          
+
+      - name: Generate before/after comparison report
+        run: python3 scripts/compare_reports.py
+
+      - name: Upload comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: comparison-report
+          path: reports/comparison/
+            
       - name: Terraform destroy
         if: always()
         working-directory: terraform
